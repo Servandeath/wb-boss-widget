@@ -1,0 +1,19 @@
+﻿# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Chrome extension
+node_modules/
+
+# Секреты - никогда не коммитим
+credentials.json
+service-account*.json
+.env
+
+# База данных - локальные данные, не код
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
