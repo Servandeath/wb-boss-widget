@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "WB Boss Widget",
+  "version": "0.1.0",
+  "description": "Полупрозрачный виджет с показателями по нескольким кабинетам Wildberries",
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "action": {
+    "default_title": "WB Boss Widget"
+  }
+}

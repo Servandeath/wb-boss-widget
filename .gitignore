@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 .venv/
 __pycache__/
 *.pyc
@@ -18,3 +18,6 @@ service-account*.json
 .DS_Store
 Thumbs.db
 backend/cache/
+
+# Локальные файлы, оставленные при переносе на новую структуру
+_to_delete/

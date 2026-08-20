@@ -1,4 +1,4 @@
-﻿# wb-boss-widget
+# wb-boss-widget
 
 Chrome-расширение - полупрозрачный виджет для оперативного просмотра
 показателей по нескольким кабинетам Wildberries (заказы, продажи,
@@ -24,7 +24,7 @@ API и показывать данные. Мы намеренно так не д
 сломать то, что уже работает.
 
 Решение: не дублировать сбор данных, а переиспользовать то, что
-уже есть.
+уже есть. Подробнее - в `docs/adr/0001-reuse-google-sheets-instead-of-wb-api.md`.
 
 ## Как это устроено
 
@@ -65,12 +65,42 @@ Cabinet1   2026-07-19   sales     98500
 
 ## Структура репозитория
 
-- backend/  - Python: чтение Google Sheets, расчёт метрик, cron, FastAPI-сервер
-- extension/ - Chrome-расширение: только отрисовка данных
-- docs/ - дополнительная документация (архитектурные решения, схемы)
+```
+backend/
+  app/
+    sheets_client.py   # общая авторизация и клиент Sheets API
+    ingestion/         # чтение листов, кэш архивных месяцев
+    mapping/            # словари "заголовок источника -> каноническое имя"
+    metrics/            # расчёт метрик (пока не реализовано)
+    storage/            # SQLite-слой (пока не реализовано)
+    api/                # FastAPI-сервер (пока не реализовано)
+  scripts/              # разведочные скрипты для ручной проверки (ходят в API)
+  tests/                # unit-тесты (pytest, без сети)
+  requirements.txt
+  cache/                # кэш архивных листов (в .gitignore)
+  credentials.json      # service account ключ (в .gitignore)
+extension/
+  manifest.json
+  background/            # service worker: опрос backend API
+  content/                # отрисовка виджета
+docs/
+  adr/                   # архитектурные решения (контекст/решение/последствия)
+```
+
+Подробнее по каждой части - в `backend/README.md`, `extension/README.md`,
+`docs/README.md`.
+
+## Установка backend
+
+```
+pip install -r backend/requirements.txt
+pytest backend/tests
+```
 
 ## Статус
 
-Ранняя разработка. Сейчас: структура репозитория и базовая
-конфигурация. Следующий шаг: скрипт чтения одной Google-таблицы
-через Sheets API.
+Ранняя разработка. Сейчас: чтение и кэширование Google Sheets,
+сопоставление колонок WB с каноническими именами, скелет структуры
+для extension/ и будущих backend/app/{metrics,storage,api}. Следующий
+шаг: расчёт метрик из прочитанных строк и запись в SQLite
+(`backend/app/metrics/`, `backend/app/storage/`).
