@@ -7,6 +7,7 @@
 """
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,6 +15,14 @@ from dotenv import load_dotenv
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_DIR / ".env")
+
+_SPREADSHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9-_]+)")
+
+
+def extract_spreadsheet_id(url: str) -> str:
+    """URL Google Sheets -> ID таблицы. Пустая строка, если url пуст/не распознан."""
+    match = _SPREADSHEET_ID_RE.search(url)
+    return match.group(1) if match else ""
 
 
 @dataclass
@@ -66,6 +75,12 @@ GOOGLE_SHEETS_SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", ""
 API_HOST = os.environ.get("API_HOST", "127.0.0.1")
 API_PORT = int(os.environ.get("API_PORT", "8000"))
 API_TOKEN = os.environ.get("API_TOKEN", "")
+
+# Именные cost-таблицы (см. .env.example) - код читает из них конкретные
+# вкладки по имени, поэтому не через позиционный COST_SHEET_URL_ALL_N.
+STOCK_SHEET_ID = extract_spreadsheet_id(os.environ.get("STOCK_SHEET_URL", ""))
+FIN_REPORT_SHEET_ID = extract_spreadsheet_id(os.environ.get("FIN_REPORT_SHEET_URL", ""))
+ADS_AGGREGATOR_SHEET_ID = extract_spreadsheet_id(os.environ.get("ADS_AGGREGATOR_SHEET_URL", ""))
 
 
 def get_cabinet(code: str) -> Cabinet:

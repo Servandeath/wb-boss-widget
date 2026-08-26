@@ -1,20 +1,21 @@
 """
 Чтение вспомогательных Google Sheets, которые пока временно заменяют
 "свою систему" себестоимости и учёта рекламы (см. backend/.env,
-COST_SHEET_URL_* и docs про кабинеты). ID таблиц захардкожены - это
-конкретные существующие таблицы владельца, не общий механизм на будущее.
+STOCK_SHEET_URL/ADS_AGGREGATOR_SHEET_URL и docs про кабинеты). ID таблиц
+берутся из config - захардкожены только имена вкладок и колонок внутри
+них (это структура конкретных существующих таблиц владельца, не общий
+механизм на будущее).
 """
 
 from collections import defaultdict
 
+from app import config
 from app.sheets_client import get_service
 
-ULTRA_SPREADSHEET_ID = "1QZN-M2Q7OYhC8b5uHW2ZDx84PR1zoDxavLo2EKGtHA8"
 ULTRA_SHEET_NAME = "Ультра"
 ULTRA_KEY_COL = 3  # "NM ID-Размер"
 ULTRA_COST_COL = 17  # "Себес"
 
-ADS_SPREADSHEET_ID = "187H8ckzzzlsLzjpQ0gyPQHWbwf7pPyRZJ3tcO4yse-E"
 ADS_SHEET_NAME = "ВСЕ"
 ADS_DATE_COL = 1  # "Дата/NmId" - первые 10 символов = дата dd.mm.yyyy
 ADS_CAB_COL = 6  # "Кэб"
@@ -33,13 +34,16 @@ def _sheet_row_count(spreadsheet_id: str, sheet_name: str) -> int:
 
 def load_cost_lookup() -> dict[str, float]:
     """key = 'nmId-техразмер' -> себестоимость (float). Источник: "Ультра"."""
+    if not config.STOCK_SHEET_ID:
+        raise RuntimeError("STOCK_SHEET_URL не задан в backend/.env")
+
     service = get_service()
-    row_count = _sheet_row_count(ULTRA_SPREADSHEET_ID, ULTRA_SHEET_NAME)
+    row_count = _sheet_row_count(config.STOCK_SHEET_ID, ULTRA_SHEET_NAME)
 
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=ULTRA_SPREADSHEET_ID, range=f"{ULTRA_SHEET_NAME}!A3:T{row_count}")
+        .get(spreadsheetId=config.STOCK_SHEET_ID, range=f"{ULTRA_SHEET_NAME}!A3:T{row_count}")
         .execute()
     )
 
@@ -60,13 +64,16 @@ def load_cost_lookup() -> dict[str, float]:
 
 def load_ad_spend_by_date(cabinet_name: str) -> dict[str, float]:
     """key = 'YYYY-MM-DD' -> расход на рекламу за день (сумма по всем nmId кабинета). Источник: "ВСЕ"."""
+    if not config.ADS_AGGREGATOR_SHEET_ID:
+        raise RuntimeError("ADS_AGGREGATOR_SHEET_URL не задан в backend/.env")
+
     service = get_service()
-    row_count = _sheet_row_count(ADS_SPREADSHEET_ID, ADS_SHEET_NAME)
+    row_count = _sheet_row_count(config.ADS_AGGREGATOR_SHEET_ID, ADS_SHEET_NAME)
 
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=ADS_SPREADSHEET_ID, range=f"{ADS_SHEET_NAME}!A3:P{row_count}")
+        .get(spreadsheetId=config.ADS_AGGREGATOR_SHEET_ID, range=f"{ADS_SHEET_NAME}!A3:P{row_count}")
         .execute()
     )
 

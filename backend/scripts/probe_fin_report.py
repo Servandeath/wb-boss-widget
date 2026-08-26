@@ -16,13 +16,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import config  # noqa: E402
 from app.sheets_client import get_service  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 CACHE_DIR = BACKEND_DIR / "cache" / "cost_sheets"
 
-FIN_OTCHET_ID = "1Cxg8nshaIL-Cgd5hJXVXRJvwL8xks2mGktqy2c121mI"
-REKLAMA_ID = "187H8ckzzzlsLzjpQ0gyPQHWbwf7pPyRZJ3tcO4yse-E"
+FIN_OTCHET_ID = config.FIN_REPORT_SHEET_ID
+REKLAMA_ID = config.ADS_AGGREGATOR_SHEET_ID
 
 # (spreadsheet_id, sheet_name, диапазон, value_render_option, файл_кэша)
 TARGETS = [
@@ -37,6 +38,9 @@ TARGETS = [
 
 
 def main():
+    if not FIN_OTCHET_ID or not REKLAMA_ID:
+        raise SystemExit("FIN_REPORT_SHEET_URL / ADS_AGGREGATOR_SHEET_URL не заданы в backend/.env")
+
     service = get_service()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
