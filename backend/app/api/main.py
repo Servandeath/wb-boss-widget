@@ -7,17 +7,30 @@ FastAPI-сервер для расширения (см. корневой README,
 рабочей сети (backend/app/config.API_HOST, не 0.0.0.0), плюс токен поверх
 (API_TOKEN) - если задан, все эндпоинты кроме /health его требуют.
 
+CORS открыт для всех origin: popup расширения - это chrome-extension://
+origin, кросс-доменный по определению, а сам API и так не смотрит в
+публичный интернет (биндинг на localhost) и есть API_TOKEN - открытый
+CORS здесь не расширяет поверхность атаки заметно.
+
 Запуск:
     uvicorn app.api.main:app --host <API_HOST> --port <API_PORT>
 (из backend/, чтобы работал импорт app.*)
 """
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from app import config
 from app.storage.db import get_connection, get_metrics
 
 app = FastAPI(title="wb-boss-widget API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["Authorization"],
+)
 
 
 def verify_token(authorization: str | None = Header(default=None)) -> None:

@@ -1,0 +1,65 @@
+body {
+  margin: 0;
+  width: 300px;
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  font-size: 13px;
+  background: #1c1c1e;
+  color: #f2f2f2;
+}
+
+.status {
+  padding: 10px 12px;
+  color: #9a9a9a;
+}
+
+.status.error {
+  color: #ff6b6b;
+}
+
+.cabinet {
+  padding: 10px 12px;
+  border-top: 1px solid #333;
+}
+
+.cabinet:first-child {
+  border-top: none;
+}
+
+.cabinet-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cabinet-date {
+  color: #9a9a9a;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+}
+
+.metric-label {
+  color: #9a9a9a;
+}
+
+.metric-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-value.positive {
+  color: #4cd964;
+}
+
+.metric-value.negative {
+  color: #ff6b6b;
+}
+
+.no-data {
+  color: #9a9a9a;
+  font-style: italic;
+}
