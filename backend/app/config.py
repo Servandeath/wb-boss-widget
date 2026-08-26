@@ -61,6 +61,12 @@ GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ.get(
 )
 GOOGLE_SHEETS_SPREADSHEET_ID = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", "")
 
+# API для расширения (см. корневой README, раздел "Безопасность"):
+# биндится на внутренний адрес рабочей сети (не 0.0.0.0), плюс токен поверх.
+API_HOST = os.environ.get("API_HOST", "127.0.0.1")
+API_PORT = int(os.environ.get("API_PORT", "8000"))
+API_TOKEN = os.environ.get("API_TOKEN", "")
+
 
 def get_cabinet(code: str) -> Cabinet:
     for cabinet in CABINETS:
