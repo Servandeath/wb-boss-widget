@@ -28,10 +28,15 @@ API и показывать данные. Мы намеренно так не д
 
 ## Как это устроено
 
-1. WB API -> Google Apps Script (уже существует, не трогаем) -> Google Sheets
-2. backend/ (cron, раз в день) читает Sheets API, считает метрики, пишет в SQLite
-3. backend/ (FastAPI) отдаёт готовый JSON
-4. extension/ (Chrome) опрашивает свой API, рисует виджет
+1. Заказы/продажи: WB API -> Google Apps Script (уже существует, не трогаем) -> Google Sheets
+2. Маржа (revenue/себестоимость/реклама): backend/ ходит в WB API напрямую
+   (официальный отчёт о реализации) + временно читает себестоимость и
+   расход на рекламу из ручных Google Sheets - см.
+   `docs/adr/0002-direct-wb-api-for-margin.md`, это отход от исходного
+   решения ADR 0001, сделанный из-за квот самого Google Apps Script
+3. backend/ считает метрики (`app/metrics/`) и пишет в SQLite (`app/storage/`)
+4. backend/ (FastAPI, `app/api/`) отдаёт готовый JSON
+5. extension/ (Chrome, popup) опрашивает свой API при открытии, рисует цифры
 
 Ключевой принцип: расширение не знает ни про WB, ни про Google
 Sheets - оно просто раз в несколько минут спрашивает свой локальный
@@ -68,21 +73,23 @@ Cabinet1   2026-07-19   sales     98500
 ```
 backend/
   app/
-    sheets_client.py   # общая авторизация и клиент Sheets API
-    ingestion/         # чтение листов, кэш архивных месяцев
-    mapping/            # словари "заголовок источника -> каноническое имя"
-    metrics/            # расчёт метрик (пока не реализовано)
-    storage/            # SQLite-слой (пока не реализовано)
-    api/                # FastAPI-сервер (пока не реализовано)
-  scripts/              # разведочные скрипты для ручной проверки (ходят в API)
-  tests/                # unit-тесты (pytest, без сети)
+    config.py           # backend/.env: кабинеты, токены, cost-таблицы, API-настройки
+    sheets_client.py     # общая авторизация и клиент Sheets API
+    ingestion/           # чтение Sheets (архив), прямые вызовы WB API, cost-таблицы
+    mapping/              # словари "заголовок источника -> каноническое имя"
+    metrics/              # расчёт метрик (margin.py - revenue/cost/ad_spend/margin)
+    storage/              # SQLite-слой (узкий формат cabinet/date/metric/value)
+    api/                  # FastAPI-сервер для расширения
+  scripts/                # разведочные/PoC-скрипты для ручной проверки (ходят в API)
+  tests/                  # unit-тесты (pytest, без сети)
   requirements.txt
-  cache/                # кэш архивных листов (в .gitignore)
-  credentials.json      # service account ключ (в .gitignore)
+  cache/                  # кэш архивных листов и cost-таблиц (в .gitignore)
+  data/                   # SQLite-база metrics.db (в .gitignore)
+  credentials.json        # service account ключ (в .gitignore)
+  .env                    # секреты и конфиг (в .gitignore, см. .env.example)
 extension/
   manifest.json
-  background/            # service worker: опрос backend API
-  content/                # отрисовка виджета
+  popup/                  # popup-окно: дёргает backend API при открытии
 docs/
   adr/                   # архитектурные решения (контекст/решение/последствия)
 ```
@@ -99,8 +106,26 @@ pytest backend/tests
 
 ## Статус
 
-Ранняя разработка. Сейчас: чтение и кэширование Google Sheets,
-сопоставление колонок WB с каноническими именами, скелет структуры
-для extension/ и будущих backend/app/{metrics,storage,api}. Следующий
-шаг: расчёт метрик из прочитанных строк и запись в SQLite
-(`backend/app/metrics/`, `backend/app/storage/`).
+Первый сквозной прогон работает: реальные токены 4 кабинетов в
+`backend/.env`, маржа считается из официального отчёта WB и пишется в
+SQLite (`backend/app/metrics/margin.py`), FastAPI отдаёт это по API
+(`/cabinets`, `/metrics/{cabinet}`), popup расширения реально показывает
+цифры (проверено вживую: запущенный backend + popup в браузере, без
+ошибок в консоли).
+
+Известные упрощения/пробелы:
+- Маржа считает только строки отчёта типа "Продажа" - логистика/хранение/
+  штрафы/возвраты отдельными строками (без привязки к конкретной продаже)
+  пока не учитываются, реальная маржа немного ниже (см. `docs/adr/0002-*`
+  и memory `margin-formula-agreement`).
+- Данные в SQLite есть только по кабинету МАНИ и за несколько тестовых
+  дней - остальные кабинеты и даты ещё не загружены (ручной запуск
+  `backend/scripts/run_margin_ingest.py`, автоматического cron/расписания
+  ещё нет).
+- Заказы/остатки (не только маржа) из корневого описания задачи - ещё
+  не реализованы как метрики.
+- Расширение не установлено как реальный unpacked extension в браузере
+  (тестировалось как обычная веб-страница с реальными fetch-запросами
+  к backend) - осталось проверить в chrome://extensions.
+- `API_TOKEN` не задан - API отвечает без авторизации, это нормально
+  только для localhost-разработки, не для сети.
