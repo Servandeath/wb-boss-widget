@@ -42,9 +42,24 @@ async function apiFetch(path) {
   const resp = await fetch(`${API_BASE}${path}`, { headers });
 
   if (!resp.ok) {
-    throw new Error(`${path}: HTTP ${resp.status}`);
+    const err = new Error(`${path}: HTTP ${resp.status}`);
+    err.status = resp.status;
+    throw err;
   }
   return resp.json();
+}
+
+// 401 - токена нет в session-хранилище (обычно после перезапуска Chrome)
+// или он неверный: даём кнопку на options-страницу вместо голой ошибки.
+function renderTokenRequired(statusEl) {
+  statusEl.textContent = "Нужен API-токен (или текущий не подходит).";
+  statusEl.classList.add("error");
+
+  const btn = document.createElement("button");
+  btn.className = "open-options";
+  btn.textContent = "Ввести токен";
+  btn.addEventListener("click", () => chrome.runtime.openOptionsPage());
+  statusEl.appendChild(btn);
 }
 
 function renderCabinet(cabinet, metricsByDate) {
@@ -107,6 +122,10 @@ async function main() {
   try {
     cabinets = await apiFetch("/cabinets");
   } catch (e) {
+    if (e.status === 401) {
+      renderTokenRequired(statusEl);
+      return;
+    }
     statusEl.textContent = "Backend недоступен (" + e.message + "). Проверь, что он запущен.";
     statusEl.classList.add("error");
     return;

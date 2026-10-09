@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "WB Boss Widget",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Показатели по нескольким кабинетам Wildberries в popup-окне",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:8000/*"],
   "action": {
     "default_title": "WB Boss Widget",
     "default_popup": "popup/popup.html"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": false
   }
 }

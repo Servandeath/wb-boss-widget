@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>WB Boss Widget - настройки</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <h1>API-токен</h1>
+  <p class="hint">
+    Значение <code>API_TOKEN</code> из <code>backend/.env</code>.
+    Хранится в <code>chrome.storage.session</code> - живёт до закрытия
+    браузера, на диск не пишется.
+  </p>
+
+  <form id="token-form">
+    <input id="token" type="password" autocomplete="off" spellcheck="false"
+           placeholder="Вставьте токен" />
+    <div class="buttons">
+      <button type="submit">Сохранить и проверить</button>
+      <button type="button" id="clear" class="secondary">Удалить</button>
+    </div>
+  </form>
+
+  <div id="status" class="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
