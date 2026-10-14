@@ -29,12 +29,19 @@ STATS_SALES_URL = "https://statistics-api.wildberries.ru/api/v1/supplier/sales"
 REALIZATION_REPORT_URL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed"
 REALIZATION_REPORTS_LIST_URL = "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/list"
 REALIZATION_REPORT_PAGE_PAUSE_S = 61  # лимит метода: 1 запрос/минуту
+ORDER_FEED_URL = "https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed"
+ORDER_FEED_PAGE_LIMIT = 10000  # максимум, который принимает WB (больше - 400)
+ORDER_FEED_PAGE_PAUSE_S = 61  # лимит метода: 1 запрос/минуту
+WB_STOCKS_URL = "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses"
+SELLER_STOCKS_URL = "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/seller-warehouses"
+WB_STOCKS_PAGE_LIMIT = 250000
+WB_STOCKS_PAGE_PAUSE_S = 21  # лимит метода: 3 запроса/минуту
 MAX_RETRIES_429 = 8
-REQUEST_TIMEOUT_S = 30
+REQUEST_TIMEOUT_S = 120  # страница order-feed на 10 000 строк отдаётся не мгновенно
 
 
 def _request_with_retry(method: str, url: str, token: str, params: dict | None = None,
-                        json_body: dict | None = None) -> list[dict]:
+                        json_body: dict | None = None) -> list | dict:
     headers = {"Authorization": token}
 
     attempt = 0
@@ -127,3 +134,65 @@ def get_realization_reports_list(token: str, date_from, date_to, period: str = "
         "limit": 1000,
     }
     return _request_with_retry("POST", REALIZATION_REPORTS_LIST_URL, token, json_body=body)
+
+
+def get_order_feed(token: str, start, end) -> list[dict]:
+    """
+    Лента заказов (Order Feed, категория токена "Аналитика"): 1 строка =
+    1 товар в заказе, поля nmId/chrtId/createdAt/status/sellerPrice/...
+    start/end - datetime с таймзоной; WB фильтрует по времени ТЕКУЩЕГО
+    статуса заказа (не по createdAt) и отдаёт максимум последние 31 день.
+
+    Пагинация offset/limit от одного snapshotTime (если WB его вернул) -
+    чтобы новые заказы во время выгрузки не сдвигали страницы.
+    """
+    pagination: dict = {"offset": 0, "limit": ORDER_FEED_PAGE_LIMIT}
+    body = {
+        "selectedPeriod": {"start": start.isoformat(), "end": end.isoformat()},
+        "pagination": pagination,
+    }
+
+    orders: list[dict] = []
+    while True:
+        resp = _request_with_retry("POST", ORDER_FEED_URL, token, json_body=body)
+        data = (resp or {}).get("data") or {}
+        page = data.get("orders") or []
+        orders.extend(page)
+
+        if len(page) < ORDER_FEED_PAGE_LIMIT:
+            return orders
+
+        if data.get("snapshotTime") and "snapshotTime" not in pagination:
+            pagination["snapshotTime"] = data["snapshotTime"]
+        pagination["offset"] += len(page)
+        time.sleep(ORDER_FEED_PAGE_PAUSE_S)
+
+
+def get_wb_stocks(token: str) -> list[dict]:
+    """
+    Текущие остатки на складах WB (категория "Аналитика"), обновляются
+    раз в 30 минут: 1 строка = 1 размер на 1 складе, поля quantity,
+    inWayToClient, inWayFromClient. Без фильтра по nmIds - весь кабинет.
+    """
+    return _get_stocks(WB_STOCKS_URL, token)
+
+
+def get_seller_stocks(token: str) -> list[dict]:
+    """Остатки на складах продавца (FBS) - тот же формат и лимит, что у get_wb_stocks."""
+    return _get_stocks(SELLER_STOCKS_URL, token)
+
+
+def _get_stocks(url: str, token: str) -> list[dict]:
+    body = {"nmIds": [], "limit": WB_STOCKS_PAGE_LIMIT, "offset": 0}
+
+    items: list[dict] = []
+    while True:
+        resp = _request_with_retry("POST", url, token, json_body=body)
+        page = ((resp or {}).get("data") or {}).get("items") or []
+        items.extend(page)
+
+        if len(page) < WB_STOCKS_PAGE_LIMIT:
+            return items
+
+        body["offset"] += len(page)
+        time.sleep(WB_STOCKS_PAGE_PAUSE_S)
