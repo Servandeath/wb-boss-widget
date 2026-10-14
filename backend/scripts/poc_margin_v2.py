@@ -124,7 +124,7 @@ def main():
 
     print("Гружу отчёт о реализации из WB API (один запрос)...")
     report_rows = get_realization_report(cabinet.token, date_from, date_to)
-    sale_rows = [r for r in report_rows if r.get("supplier_oper_name") == "Продажа"]
+    sale_rows = [r for r in report_rows if r.get("sellerOperName") == "Продажа"]
     print(f"Строк всего: {len(report_rows)}, из них 'Продажа': {len(sale_rows)}")
 
     print("Гружу себестоимость из 'Ультра'...")
@@ -142,9 +142,9 @@ def main():
     unmatched_examples = []
 
     for row in sale_rows:
-        nm_id = str(row.get("nm_id", ""))
-        tech_size = str(row.get("ts_name", "")).strip()
-        for_pay = float(row.get("ppvz_for_pay", 0) or 0)
+        nm_id = str(row.get("nmId", ""))
+        tech_size = str(row.get("techSize", "")).strip()
+        for_pay = float(row.get("forPay", 0) or 0)
 
         nm_ids_seen.add(nm_id)
         revenue += for_pay
