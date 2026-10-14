@@ -25,3 +25,8 @@ _to_delete/
 
 # Рабочие прототипы GAS - справочный материал только локально, не публикуем
 docs/wb_gas_prototype/
+
+# Сырые выгрузки WB и реальные себестоимость/реклама - данные кабинетов, не код
+backend/data/raw/
+backend/data/costs.csv
+backend/data/ads.csv

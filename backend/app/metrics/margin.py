@@ -1,83 +1,131 @@
 """
-Расчёт revenue/cost/ad_spend/margin по дням из отчёта о реализации WB
-(см. [[margin-formula-agreement]] в памяти) и запись в SQLite (узкий
-формат cabinet/date/metric/value).
+Метрики по дням из отчёта о реализации WB (finance-api, см.
+app/ingestion/wb_client.py) + себестоимость из локального CSV
+(app/ingestion/local_costs.py). Google Sheets больше не нужны: реклама,
+оплаченная с баланса WB, уже есть в отчёте как удержания "WB Продвижение"
+/ "WB Медиа".
 
-Упрощение против канонической формулы "ГлавСвод" (см. [[ref-fin-otchet-sheet]]):
-считаем только строки supplier_oper_name == "Продажа" - логистика/хранение/
-штрафы/возвраты отдельными строками отчёта пока не учитываются, реальная
-маржа будет несколько ниже. См. backend/scripts/poc_margin_v2.py, откуда
-это перенесено.
+Формула "к перечислению" сверена с итогом WB (bankPaymentSum из
+/sales-reports/list) - на полных отчётах МАНИ совпадает до копейки:
+
+    payout = revenue - logistics - storage - acceptance - penalties
+             - ad_spend - deductions + additional - loyalty
+
+    revenue     ±forPay (знак "-" у строк с docTypeName "Возврат")
+    logistics   deliveryService
+    storage     paidStorage
+    acceptance  paidAcceptance
+    penalties   penalty
+    ad_spend    deduction, где bonusTypeName - "WB Продвижение"/"WB Медиа"
+    deductions  остальные deduction (подписка "Джем", витрина, утилизация...)
+    additional  additionalPayment
+    loyalty     ±(cashbackAmount + cashbackCommissionChange) - баллы и
+                комиссия программы лояльности, у "Возврат" со знаком "-"
+
+    cost   = ±себестоимость × quantity по строкам "Продажа"/"Возврат"
+    margin = payout - cost
+
+День - rrDate строки (дата операции в отчёте), а не saleDt. WB фильтрует
+строки по rrDate, поэтому любой день внутри запрошенного периода
+приходит целиком, и повторная загрузка перекрывающегося окна не затирает
+день частичной суммой. По saleDt так нельзя: у возвратов и удержаний он
+бывает на месяцы раньше периода (видели 2026-06-30 в отчёте за сентябрь).
+Удержания WB выставляет документами раз в несколько дней, поэтому
+ad_spend/deductions по дням "ступенчатые" - на неделе сходится, по дню нет.
+
+rebillLogisticCost в формулу не входит - он не участвует в
+bankPaymentSum (справочное поле WB, проверено сверкой).
 """
 
 from collections import defaultdict
 
 from app.config import Cabinet
-from app.ingestion.cost_sheets import load_ad_spend_by_date, load_cost_lookup
+from app.ingestion.local_costs import cost_key, load_cost_lookup
 from app.ingestion.wb_client import get_realization_report
 from app.storage.db import get_connection, upsert_metric
+
+AD_DEDUCTION_MARKERS = ("WB Продвижение", "WB Медиа")
+GOODS_OPERATIONS = ("Продажа", "Возврат")
+
+EXPENSE_METRICS = ("logistics", "storage", "acceptance", "penalties", "ad_spend", "deductions", "loyalty")
+STORED_METRICS = (
+    "revenue", *EXPENSE_METRICS, "additional", "payout", "cost", "margin", "units_without_cost",
+)
+
+
+def _num(row: dict, field: str) -> float:
+    """Денежные поля finance-api приходят строками ("367.5"), часть - числами."""
+    value = row.get(field)
+    return float(value) if value not in (None, "") else 0.0
+
+
+def _is_ad_deduction(row: dict) -> bool:
+    bonus = row.get("bonusTypeName") or ""
+    return any(marker in bonus for marker in AD_DEDUCTION_MARKERS)
+
+
+def compute_daily_metrics(report_rows: list[dict], cost_lookup: dict[str, float]) -> dict[str, dict[str, float]]:
+    """
+    Чистая функция без сети и БД: строки отчёта -> {date: {metric: value}}.
+    units_without_cost - сколько проданных единиц не нашлось в costs.csv
+    (их себестоимость посчитана как 0, маржа по ним завышена).
+    """
+    days: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+    for row in report_rows:
+        date = str(row.get("rrDate") or "")[:10]
+        if not date:
+            continue
+
+        sign = -1 if row.get("docTypeName") == "Возврат" else 1
+        day = days[date]
+
+        day["revenue"] += sign * _num(row, "forPay")
+        day["logistics"] += _num(row, "deliveryService")
+        day["storage"] += _num(row, "paidStorage")
+        day["acceptance"] += _num(row, "paidAcceptance")
+        day["penalties"] += _num(row, "penalty")
+        day["additional"] += _num(row, "additionalPayment")
+        day["loyalty"] += sign * (_num(row, "cashbackAmount") + _num(row, "cashbackCommissionChange"))
+
+        deduction = _num(row, "deduction")
+        if deduction:
+            day["ad_spend" if _is_ad_deduction(row) else "deductions"] += deduction
+
+        if row.get("sellerOperName") in GOODS_OPERATIONS:
+            quantity = _num(row, "quantity")
+            unit_cost = cost_lookup.get(cost_key(row.get("nmId", ""), row.get("techSize", "")))
+            if unit_cost is None:
+                day["units_without_cost"] += sign * quantity
+            else:
+                day["cost"] += sign * unit_cost * quantity
+
+    result = {}
+    for date in sorted(days):
+        day = days[date]
+        payout = day["revenue"] - sum(day[m] for m in EXPENSE_METRICS) + day["additional"]
+        metrics = {m: round(day[m], 2) for m in STORED_METRICS if m not in ("payout", "margin")}
+        metrics["payout"] = round(payout, 2)
+        metrics["margin"] = round(payout - day["cost"], 2)
+        result[date] = metrics
+
+    return result
 
 
 def compute_and_store_margin(cabinet: Cabinet, date_from, date_to) -> dict[str, dict[str, float]]:
     """
-    Один запрос к reportDetailByPeriod (жёсткий rate limit - не звать в
-    цикле по датам, только на весь period целиком) + два к Google Sheets.
-    Возвращает {date: {metric: value}} - то же, что записано в SQLite.
+    Отчёт о реализации за весь период целиком (finance-api, лимит
+    1 запрос/минуту - не звать в цикле по датам) -> метрики -> SQLite.
+    Возвращает {date: {metric: value}} - то же, что записано.
     """
     report_rows = get_realization_report(cabinet.token, date_from, date_to)
-    sale_rows = [r for r in report_rows if r.get("supplier_oper_name") == "Продажа"]
+    result = compute_daily_metrics(report_rows, load_cost_lookup())
 
-    cost_lookup = load_cost_lookup()
-    ad_spend_by_date = load_ad_spend_by_date(cabinet.name)
-
-    revenue_by_date: dict[str, float] = defaultdict(float)
-    cost_by_date: dict[str, float] = defaultdict(float)
-    dates_seen: set[str] = set()
-
-    for row in sale_rows:
-        sale_date = str(row.get("sale_dt", ""))[:10]
-        if not sale_date:
-            continue
-        dates_seen.add(sale_date)
-
-        nm_id = str(row.get("nm_id", ""))
-        tech_size = str(row.get("ts_name", "")).strip()
-        for_pay = float(row.get("ppvz_for_pay", 0) or 0)
-
-        revenue_by_date[sale_date] += for_pay
-
-        unit_cost = cost_lookup.get(f"{nm_id}-{tech_size}")
-        if unit_cost is not None:
-            cost_by_date[sale_date] += unit_cost
-
-    # Реклама льётся каждый день независимо от того, были ли в этот день
-    # продажи - берём даты и из продаж, и из самого рекламного отчёта
-    # в пределах запрошенного периода.
-    all_dates = dates_seen | {
-        d for d in ad_spend_by_date if date_from.strftime("%Y-%m-%d") <= d <= date_to.strftime("%Y-%m-%d")
-    }
-
-    result: dict[str, dict[str, float]] = {}
     conn = get_connection()
-
     try:
-        for date in sorted(all_dates):
-            revenue = revenue_by_date.get(date, 0.0)
-            cost = cost_by_date.get(date, 0.0)
-            ad_spend = ad_spend_by_date.get(date, 0.0)
-            margin = revenue - cost - ad_spend
-
-            metrics = {
-                "revenue": revenue,
-                "cost": cost,
-                "ad_spend": ad_spend,
-                "margin": margin,
-            }
-            result[date] = metrics
-
+        for date, metrics in result.items():
             for metric, value in metrics.items():
                 upsert_metric(conn, cabinet.code, date, metric, value)
-
         conn.commit()
     finally:
         conn.close()

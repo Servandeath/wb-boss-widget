@@ -10,10 +10,15 @@
 const API_BASE = "http://127.0.0.1:8000";
 const DAYS_BACK = 7;
 
+// Порядок = порядок строк в popup. Полный список метрик - в докстринге
+// backend/app/metrics/margin.py; здесь только то, что нужно глазами.
 const METRIC_LABELS = {
   revenue: "Выручка",
-  cost: "Себестоимость",
+  logistics: "Логистика",
+  penalties: "Штрафы",
   ad_spend: "Реклама",
+  payout: "К перечислению",
+  cost: "Себестоимость",
   margin: "Маржа",
 };
 
@@ -109,6 +114,13 @@ function renderCabinet(cabinet, metricsByDate) {
   }
 
   el.appendChild(metricsEl);
+
+  if (values.units_without_cost) {
+    const warnEl = document.createElement("div");
+    warnEl.className = "no-data";
+    warnEl.textContent = `Без себестоимости: ${values.units_without_cost} шт. - маржа завышена`;
+    el.appendChild(warnEl);
+  }
   return el;
 }
 
