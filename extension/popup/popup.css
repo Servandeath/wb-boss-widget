@@ -42,10 +42,14 @@ body {
   margin-bottom: 6px;
 }
 
-.cabinet-date {
+.section + .section {
+  margin-top: 8px;
+}
+
+.section-title {
   color: #9a9a9a;
   font-size: 11px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .metrics {

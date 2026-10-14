@@ -8,22 +8,54 @@
 // или нет (см. backend/app/config.API_TOKEN).
 
 const API_BASE = "http://127.0.0.1:8000";
-const DAYS_BACK = 7;
+// Финансы приходят из еженедельного отчёта о реализации - последний
+// день с ними бывает на 7-10 дней раньше сегодняшнего, отсюда запас.
+const DAYS_BACK = 14;
 
-// Порядок = порядок строк в popup. Полный список метрик - в докстринге
-// backend/app/metrics/margin.py; здесь только то, что нужно глазами.
-const METRIC_LABELS = {
-  revenue: "Выручка",
-  logistics: "Логистика",
-  penalties: "Штрафы",
-  ad_spend: "Реклама",
-  payout: "К перечислению",
-  cost: "Себестоимость",
-  margin: "Маржа",
-};
+// Блоки popup. У каждого своя "последняя дата": заказы и остатки -
+// почти в реальном времени, финансы - с задержкой отчёта WB. marker -
+// метрика, по которой ищем последний день с данными блока. Полный
+// список метрик - в докстрингах backend/app/metrics/*.py.
+const SECTIONS = [
+  {
+    title: "Заказы",
+    marker: "orders",
+    metrics: [
+      ["orders", "Заказано", "count"],
+      ["orders_sum", "На сумму", "rub"],
+      ["cancels", "Отмены", "count"],
+      ["buyouts", "Выкуплено", "count"],
+    ],
+  },
+  {
+    title: "Остатки",
+    marker: "stock",
+    metrics: [
+      ["stock", "На складах WB", "count"],
+      ["stock_seller", "На своём складе", "count"],
+      ["stock_to_client", "В пути к клиенту", "count"],
+      ["stock_from_client", "Возвращаются", "count"],
+    ],
+  },
+  {
+    title: "Финансы",
+    marker: "payout",
+    metrics: [
+      ["revenue", "Выручка", "rub"],
+      ["logistics", "Логистика", "rub"],
+      ["penalties", "Штрафы", "rub"],
+      ["ad_spend", "Реклама", "rub"],
+      ["payout", "К перечислению", "rub"],
+      ["cost", "Себестоимость", "rub"],
+      ["margin", "Маржа", "rub"],
+    ],
+  },
+];
 
-function formatRub(value) {
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value) + " ₽";
+const NUMBER_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+
+function formatValue(value, kind) {
+  return NUMBER_FORMAT.format(value) + (kind === "rub" ? " ₽" : " шт.");
 }
 
 function isoDateDaysAgo(days) {
@@ -67,36 +99,27 @@ function renderTokenRequired(statusEl) {
   statusEl.appendChild(btn);
 }
 
-function renderCabinet(cabinet, metricsByDate) {
-  const dates = Object.keys(metricsByDate).sort();
-  const latestDate = dates[dates.length - 1];
+function latestDateWith(metricsByDate, metric) {
+  const dates = Object.keys(metricsByDate).filter((d) => metric in metricsByDate[d]).sort();
+  return dates[dates.length - 1];
+}
+
+function renderSection(section, metricsByDate) {
+  const date = latestDateWith(metricsByDate, section.marker);
+  if (!date) return null;
+  const values = metricsByDate[date];
 
   const el = document.createElement("div");
-  el.className = "cabinet";
+  el.className = "section";
 
-  const nameEl = document.createElement("div");
-  nameEl.className = "cabinet-name";
-  nameEl.textContent = cabinet.name;
-  el.appendChild(nameEl);
-
-  if (!latestDate) {
-    const noData = document.createElement("div");
-    noData.className = "no-data";
-    noData.textContent = "Нет данных за последние " + DAYS_BACK + " дней";
-    el.appendChild(noData);
-    return el;
-  }
-
-  const dateEl = document.createElement("div");
-  dateEl.className = "cabinet-date";
-  dateEl.textContent = "за " + latestDate;
-  el.appendChild(dateEl);
+  const titleEl = document.createElement("div");
+  titleEl.className = "section-title";
+  titleEl.textContent = `${section.title} · ${date}`;
+  el.appendChild(titleEl);
 
   const metricsEl = document.createElement("div");
   metricsEl.className = "metrics";
-
-  const values = metricsByDate[latestDate];
-  for (const [key, label] of Object.entries(METRIC_LABELS)) {
+  for (const [key, label, kind] of section.metrics) {
     if (!(key in values)) continue;
 
     const labelEl = document.createElement("div");
@@ -109,18 +132,39 @@ function renderCabinet(cabinet, metricsByDate) {
     if (key === "margin") {
       valueEl.classList.add(values[key] >= 0 ? "positive" : "negative");
     }
-    valueEl.textContent = formatRub(values[key]);
+    valueEl.textContent = formatValue(values[key], kind);
     metricsEl.appendChild(valueEl);
   }
-
   el.appendChild(metricsEl);
 
-  if (values.units_without_cost) {
+  if (section.marker === "payout" && values.units_without_cost) {
     const warnEl = document.createElement("div");
     warnEl.className = "no-data";
     warnEl.textContent = `Без себестоимости: ${values.units_without_cost} шт. - маржа завышена`;
     el.appendChild(warnEl);
   }
+  return el;
+}
+
+function renderCabinet(cabinet, metricsByDate) {
+  const el = document.createElement("div");
+  el.className = "cabinet";
+
+  const nameEl = document.createElement("div");
+  nameEl.className = "cabinet-name";
+  nameEl.textContent = cabinet.name;
+  el.appendChild(nameEl);
+
+  const sections = SECTIONS.map((s) => renderSection(s, metricsByDate)).filter(Boolean);
+  if (!sections.length) {
+    const noData = document.createElement("div");
+    noData.className = "no-data";
+    noData.textContent = "Нет данных за последние " + DAYS_BACK + " дней";
+    el.appendChild(noData);
+    return el;
+  }
+
+  sections.forEach((s) => el.appendChild(s));
   return el;
 }
 
