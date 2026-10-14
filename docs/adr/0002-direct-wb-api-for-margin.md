@@ -26,8 +26,10 @@ Google Sheets либо нет вообще (официальный WB "Отчё�
 `backend/app/ingestion/wb_client.py` ходит в WB API напрямую:
 
 - `get_sales()` - `statistics-api/supplier/sales` (детальные продажи)
-- `get_realization_report()` - `statistics-api/reportDetailByPeriod`
-  (официальный отчёт о реализации - основной источник для маржи)
+- `get_realization_report()` - `finance-api/api/finance/v1/sales-reports/detailed`
+  (официальный отчёт о реализации - основной источник для маржи). До
+  2026-10 это был `statistics-api/reportDetailByPeriod` - WB его отключил
+  (404 "This method is deprecated"), поля в новом методе в camelCase
 
 Себестоимость и расход на рекламу пока продолжают идти из Google Sheets
 (`backend/app/ingestion/cost_sheets.py`, таблицы "Ультра" и "Реклама
